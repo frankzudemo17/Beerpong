@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Bierpong · Turnier-Manager</title>
+
+<!-- Supabase JS (UMD global: window.supabase) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- QR-Code clientseitig, keine Daten an Dritte -->
+<script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs/qrcode.min.js"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    /* --- Token-System: Lagerbier-Gold + Solo-Cup-Rot auf Nacht-Aubergine --- */
+    --ink:        #14101c;   /* Hintergrund, tiefes Aubergine-Schwarz       */
+    --ink-2:      #1d1730;   /* Panel-Fläche                                 */
+    --ink-3:      #2a2240;   /* Linien / Hover                               */
+    --foam:       #f6f1e7;   /* Schaum-Weiß, Text                            */
+    --muted:      #9a92ad;   /* sekundärer Text                              */
+    --gold:       #ffb627;   /* Lager-Gold, primärer Akzent / CTA           */
+    --gold-deep:  #e89a06;
+    --cup:        #e23b3b;   /* Solo-Cup-Rot, sparsam für Akzente            */
+    --ok:         #4ade80;
+    --radius:     14px;
+    --shadow:     0 18px 50px -20px rgba(0,0,0,.8);
+    --maxw:       480px;
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:
+      radial-gradient(1200px 600px at 50% -10%, #241a3a 0%, transparent 60%),
+      var(--ink);
+    color:var(--foam);
+    font-family:"DM Sans",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    display:flex;flex-direction:column;min-height:100%;
+  }
+
+  a{color:var(--gold)}
+  .hidden{display:none !important}
+
+  /* ---------- Wordmark + Cup-Pyramide (Signatur) ---------- */
+  .brand{display:flex;align-items:center;gap:12px;user-select:none}
+  .rack{width:34px;height:34px;flex:0 0 auto}
+  .rack .cup{fill:var(--cup)}
+  .rack .ball{fill:var(--foam)}
+  .wordmark{font-family:"Anton",sans-serif;letter-spacing:.5px;line-height:.9}
+  .wordmark .big{font-size:1.5rem;display:block}
+  .wordmark .eyebrow{
+    font-family:"Space Mono",monospace;font-size:.6rem;letter-spacing:.32em;
+    color:var(--muted);text-transform:uppercase;display:block;margin-top:3px;
+  }
+
+  /* ---------- Auth-Screen ---------- */
+  .center{flex:1;display:flex;align-items:center;justify-content:center;padding:28px 18px}
+  .card{
+    width:100%;max-width:var(--maxw);background:var(--ink-2);
+    border:1px solid var(--ink-3);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:30px 26px;
+  }
+  .card .brand{justify-content:center;margin-bottom:26px}
+  .wordmark.hero .big{font-size:2.4rem}
+
+  .tabs{display:flex;gap:6px;background:var(--ink);border-radius:10px;padding:5px;margin-bottom:22px}
+  .tabs button{
+    flex:1;border:0;background:transparent;color:var(--muted);
+    font-family:"DM Sans";font-weight:700;font-size:.92rem;padding:9px;border-radius:7px;cursor:pointer;
+    transition:background .15s,color .15s;
+  }
+  .tabs button.active{background:var(--ink-3);color:var(--foam)}
+
+  label{display:block;font-size:.78rem;color:var(--muted);margin:0 0 6px 2px;font-weight:500}
+  input[type=email],input[type=password],input[type=text],select{
+    width:100%;background:var(--ink);border:1px solid var(--ink-3);
+    color:var(--foam);border-radius:10px;padding:12px 13px;font-size:1rem;
+    font-family:inherit;margin-bottom:16px;transition:border-color .15s;
+  }
+  input:focus,select:focus{outline:0;border-color:var(--gold)}
+  ::placeholder{color:#6d6582}
+
+  .btn{
+    width:100%;border:0;border-radius:10px;cursor:pointer;
+    font-family:"DM Sans";font-weight:700;font-size:1rem;padding:13px;
+    background:linear-gradient(180deg,var(--gold),var(--gold-deep));
+    color:#2a1c00;transition:transform .08s,filter .15s;
+  }
+  .btn:hover{filter:brightness(1.06)}
+  .btn:active{transform:translateY(1px)}
+  .btn:disabled{opacity:.55;cursor:not-allowed}
+  .btn.ghost{background:transparent;border:1px solid var(--ink-3);color:var(--foam)}
+  .btn.small{width:auto;padding:9px 16px;font-size:.85rem}
+
+  .msg{font-size:.85rem;padding:10px 12px;border-radius:9px;margin-bottom:14px;line-height:1.4}
+  .msg.err{background:rgba(226,59,59,.12);border:1px solid rgba(226,59,59,.4);color:#ff9b9b}
+  .msg.ok{background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.35);color:#a6f0bf}
+  .msg.info{background:var(--ink);border:1px solid var(--ink-3);color:var(--muted)}
+
+  .switch-note{text-align:center;font-size:.85rem;color:var(--muted);margin-top:16px}
+
+  /* ---------- App / Dashboard ---------- */
+  header.bar{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:16px 20px;border-bottom:1px solid var(--ink-3);
+    position:sticky;top:0;background:rgba(20,16,28,.85);backdrop-filter:blur(8px);z-index:5;
+  }
+  header.bar .wordmark .big{font-size:1.25rem}
+  .who{display:flex;align-items:center;gap:14px}
+  .who .email{font-size:.82rem;color:var(--muted);font-family:"Space Mono",monospace}
+
+  main.wrap{max-width:880px;width:100%;margin:0 auto;padding:26px 20px 60px}
+
+  .pills{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:24px}
+  .pill{
+    font-family:"Space Mono",monospace;font-size:.7rem;letter-spacing:.05em;
+    text-transform:uppercase;padding:5px 10px;border-radius:999px;
+    background:var(--ink-2);border:1px solid var(--ink-3);color:var(--muted);
+  }
+  .pill.super{background:rgba(255,182,39,.14);border-color:var(--gold);color:var(--gold)}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+  .tile{
+    background:var(--ink-2);border:1px solid var(--ink-3);border-radius:var(--radius);
+    padding:20px;display:flex;flex-direction:column;gap:6px;min-height:120px;
+  }
+  .tile h3{margin:0;font-family:"DM Sans";font-weight:700;font-size:1.05rem;display:flex;align-items:center;gap:8px}
+  .tile .soon{font-family:"Space Mono",monospace;font-size:.6rem;letter-spacing:.1em;color:var(--gold);
+    border:1px solid var(--gold);border-radius:5px;padding:1px 5px;text-transform:uppercase}
+  .tile p{margin:0;color:var(--muted);font-size:.88rem;line-height:1.45}
+  .tile .ico{font-size:1.1rem}
+
+  .section-title{font-family:"Anton";letter-spacing:.5px;font-size:.95rem;text-transform:uppercase;
+    color:var(--muted);margin:30px 0 12px;display:flex;align-items:center;gap:10px}
+  .section-title::after{content:"";flex:1;height:1px;background:var(--ink-3)}
+
+  /* Freischaltung-Box */
+  .redeem{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start}
+  .redeem input{margin:0;flex:1;min-width:180px;text-transform:uppercase;font-family:"Space Mono",monospace}
+
+  /* Invite-Ergebnis */
+  #inviteResult{margin-top:16px}
+  .code-big{font-family:"Space Mono",monospace;font-weight:700;font-size:1.3rem;letter-spacing:.08em;
+    background:var(--ink);border:1px dashed var(--ink-3);border-radius:9px;padding:12px;text-align:center;color:var(--gold)}
+  #qr{background:#fff;padding:10px;border-radius:9px;width:max-content;margin:14px auto 0}
+  #qr img,#qr canvas{display:block}
+
+  /* Toast */
+  #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);
+    background:var(--ink-3);border:1px solid var(--gold);color:var(--foam);
+    padding:12px 18px;border-radius:10px;font-size:.9rem;opacity:0;pointer-events:none;
+    transition:opacity .2s,transform .2s;z-index:50;box-shadow:var(--shadow)}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  .setup-list{font-size:.9rem;line-height:1.7;color:var(--muted);padding-left:18px}
+  .setup-list code{font-family:"Space Mono",monospace;color:var(--gold);font-size:.85em}
+
+  @media (prefers-reduced-motion: reduce){*{transition:none !important}}
+  @media (max-width:520px){.who .email{display:none}}
+</style>
+</head>
+<body>
+
+<!-- ================= LADEN ================= -->
+<section id="screen-loading" class="center">
+  <div class="brand"><span class="wordmark"><span class="big">…</span></span></div>
+</section>
+
+<!-- ================= SETUP-HINWEIS (Keys fehlen) ================= -->
+<section id="screen-setup" class="center hidden">
+  <div class="card">
+    <div class="brand"><span class="wordmark hero"><span class="big">BIERPONG</span></span></div>
+    <div class="msg err">Noch nicht konfiguriert.</div>
+    <p class="setup-list">Trag oben im <code>&lt;script&gt;</code> deine Werte aus
+      <em>Supabase → Project Settings → API</em> ein:</p>
+    <ol class="setup-list">
+      <li><code>SUPABASE_URL</code> – die Project URL</li>
+      <li><code>SUPABASE_ANON_KEY</code> – der publishable / anon Key</li>
+    </ol>
+    <p class="setup-list">Den <code>service_role</code>-Key niemals hier eintragen.</p>
+  </div>
+</section>
+
+<!-- ================= AUTH ================= -->
+<section id="screen-auth" class="center hidden">
+  <div class="card">
+    <div class="brand">
+      <!-- Signatur: 10er-Cup-Pyramide mit Ball -->
+      <svg class="rack" viewBox="0 0 100 100" aria-hidden="true">
+        <g class="cup">
+          <circle cx="20" cy="78" r="9"/><circle cx="40" cy="78" r="9"/>
+          <circle cx="60" cy="78" r="9"/><circle cx="80" cy="78" r="9"/>
+          <circle cx="30" cy="58" r="9"/><circle cx="50" cy="58" r="9"/><circle cx="70" cy="58" r="9"/>
+          <circle cx="40" cy="38" r="9"/><circle cx="60" cy="38" r="9"/>
+          <circle cx="50" cy="18" r="9"/>
+        </g>
+        <circle class="ball" cx="50" cy="18" r="4.5"/>
+      </svg>
+      <span class="wordmark hero"><span class="big">BIERPONG</span><span class="eyebrow">Turnier-Manager</span></span>
+    </div>
+
+    <div class="tabs">
+      <button id="tab-login" class="active" type="button">Anmelden</button>
+      <button id="tab-signup" type="button">Registrieren</button>
+    </div>
+
+    <div id="inviteBanner" class="msg info hidden"></div>
+    <div id="authMsg" class="msg err hidden"></div>
+
+    <label for="email">E-Mail</label>
+    <input id="email" type="email" autocomplete="email" placeholder="du@beispiel.de" />
+
+    <label for="password">Passwort</label>
+    <input id="password" type="password" autocomplete="current-password" placeholder="mind. 8 Zeichen" />
+
+    <button id="authBtn" class="btn" type="button">Anmelden</button>
+
+    <p class="switch-note" id="switchNote"></p>
+  </div>
+</section>
+
+<!-- ================= E-MAIL BESTÄTIGEN ================= -->
+<section id="screen-confirm" class="center hidden">
+  <div class="card">
+    <div class="brand"><span class="wordmark hero"><span class="big">FAST DRIN</span></span></div>
+    <div class="msg ok">Bestätigungs-Mail unterwegs. Öffne den Link darin, dann komm zurück und melde dich an.</div>
+    <button class="btn ghost" type="button" onclick="show('screen-auth')">Zurück zur Anmeldung</button>
+  </div>
+</section>
+
+<!-- ================= APP ================= -->
+<section id="screen-app" class="hidden" style="flex:1;display:flex;flex-direction:column">
+  <header class="bar">
+    <div class="brand">
+      <svg class="rack" viewBox="0 0 100 100" aria-hidden="true">
+        <g class="cup">
+          <circle cx="20" cy="78" r="9"/><circle cx="40" cy="78" r="9"/>
+          <circle cx="60" cy="78" r="9"/><circle cx="80" cy="78" r="9"/>
+          <circle cx="30" cy="58" r="9"/><circle cx="50" cy="58" r="9"/><circle cx="70" cy="58" r="9"/>
+          <circle cx="40" cy="38" r="9"/><circle cx="60" cy="38" r="9"/>
+          <circle cx="50" cy="18" r="9"/>
+        </g>
+        <circle class="ball" cx="50" cy="18" r="4.5"/>
+      </svg>
+      <span class="wordmark"><span class="big">BIERPONG</span></span>
+    </div>
+    <div class="who">
+      <span class="email" id="userEmail"></span>
+      <button class="btn ghost small" type="button" id="logoutBtn">Abmelden</button>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div class="pills" id="rolePills"></div>
+
+    <!-- Freischaltung: sichtbar wenn keine Rolle -->
+    <div id="activateBox" class="hidden">
+      <div class="tile">
+        <h3>Noch keinem Turnier zugeteilt</h3>
+        <p>Du hast einen Account, aber noch keine Rolle. Hast du einen Einladungscode? Gib ihn ein.</p>
+        <div class="redeem" style="margin-top:10px">
+          <input id="redeemInput" type="text" placeholder="z. B. VIEWE-7K2QM" />
+          <button class="btn small" type="button" id="redeemBtn">Einlösen</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rollen-abhängige Kacheln -->
+    <div id="dash" class="hidden">
+      <div class="section-title">Dein Bereich</div>
+      <div class="grid" id="tiles"></div>
+
+      <!-- Admin: Einladungen -->
+      <div id="adminInvite" class="hidden">
+        <div class="section-title">Einladungen &amp; Rollen</div>
+        <div class="tile">
+          <h3><span class="ico">✉️</span> Neue Einladung erstellen</h3>
+          <p>Erzeugt einen Code mit fester Rolle. Teile ihn als Text oder QR – wer ihn einlöst, ist freigeschaltet.</p>
+          <div class="redeem" style="margin-top:12px">
+            <select id="inviteRole" style="flex:1;margin:0;min-width:160px"></select>
+            <button class="btn small" type="button" id="createInviteBtn">Code erstellen</button>
+          </div>
+          <div id="inviteResult" class="hidden">
+            <div class="code-big" id="inviteCode"></div>
+            <div class="msg info" style="margin-top:10px;word-break:break-all" id="inviteLink"></div>
+            <div id="qr"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<div id="toast"></div>
+
+<script>
+/* ====================================================================
+   KONFIGURATION  ·  aus Supabase → Project Settings → API
+   ==================================================================== */
+const SUPABASE_URL      = "https://efuzkhkhdvdtmixbcigz.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_Fupd5ZEsfXYSBU6qLtKysA_eqgqKvGy";
+
+/* ==================================================================== */
+
+const configOk = !SUPABASE_URL.includes("DEIN-PROJEKT") && !SUPABASE_ANON_KEY.includes("DEIN_ANON_KEY");
+let sb = null;
+if (configOk) {
+  const url = SUPABASE_URL.startsWith("http") ? SUPABASE_URL : "https://" + SUPABASE_URL;
+  sb = supabase.createClient(url, SUPABASE_ANON_KEY);
+}
+
+/* ---- Rollen-Metadaten ---- */
+const ROLE_INFO = {
+  superadmin:    { label:"Superadmin",    ico:"👑" },
+  admin:         { label:"Admin",         ico:"🛠️" },
+  punkterichter: { label:"Punkterichter", ico:"🎯" },
+  kassenwart:    { label:"Kassenwart",    ico:"💶" },
+  viewer:        { label:"Zuschauer",     ico:"👀" },
+};
+
+/* ---- State ---- */
+let mode = "login";          // login | signup
+let pendingCode = null;
+let me = null;               // auth user
+let myRoles = [];
+
+/* ---- Helpers ---- */
+function show(id){
+  document.querySelectorAll("body > section").forEach(s => s.classList.add("hidden"));
+  document.getElementById(id).classList.remove("hidden");
+}
+function toast(text){
+  const t = document.getElementById("toast");
+  t.textContent = text; t.classList.add("show");
+  clearTimeout(t._timer);
+  t._timer = setTimeout(()=>t.classList.remove("show"), 3200);
+}
+function authMsg(text, kind="err"){
+  const m = document.getElementById("authMsg");
+  if(!text){ m.classList.add("hidden"); return; }
+  m.className = "msg " + kind; m.textContent = text; m.classList.remove("hidden");
+}
+
+/* ---- Invite-Code aus URL lesen (QR-Flow): ?code= oder #code= ---- */
+function readInviteFromUrl(){
+  const q = new URLSearchParams(location.search).get("code");
+  const h = new URLSearchParams(location.hash.replace(/^#/,"")).get("code");
+  const code = (q || h || "").trim();
+  if(code){
+    pendingCode = code.toUpperCase();
+    const b = document.getElementById("inviteBanner");
+    b.textContent = "Einladung erkannt (" + pendingCode + "). Registriere dich oder melde dich an, um beizutreten.";
+    b.classList.remove("hidden");
+  }
+}
+
+/* ---- Auth-Tabs ---- */
+document.getElementById("tab-login").onclick  = ()=>setMode("login");
+document.getElementById("tab-signup").onclick = ()=>setMode("signup");
+function setMode(m){
+  mode = m;
+  document.getElementById("tab-login").classList.toggle("active", m==="login");
+  document.getElementById("tab-signup").classList.toggle("active", m==="signup");
+  document.getElementById("authBtn").textContent = m==="login" ? "Anmelden" : "Registrieren";
+  document.getElementById("password").autocomplete = m==="login" ? "current-password" : "new-password";
+  document.getElementById("switchNote").innerHTML = m==="login"
+    ? 'Noch kein Account? <a href="#" onclick="setMode(\'signup\');return false">Registrieren</a>'
+    : 'Schon dabei? <a href="#" onclick="setMode(\'login\');return false">Anmelden</a>';
+  authMsg("");
+}
+
+/* ---- Anmelden / Registrieren ---- */
+document.getElementById("authBtn").onclick = async ()=>{
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+  const btn = document.getElementById("authBtn");
+  authMsg("");
+  if(!email || !password){ authMsg("E-Mail und Passwort eingeben."); return; }
+  btn.disabled = true; btn.textContent = "…";
+  try{
+    if(mode==="signup"){
+      const { data, error } = await sb.auth.signUp({ email, password });
+      if(error) throw error;
+      // Wenn E-Mail-Bestätigung aktiv ist, gibt es noch keine Session.
+      if(!data.session){ show("screen-confirm"); return; }
+      // sonst greift onAuthStateChange
+    } else {
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      if(error) throw error;
+    }
+  }catch(e){
+    authMsg(translateAuthError(e.message));
+  }finally{
+    btn.disabled = false; btn.textContent = mode==="login" ? "Anmelden" : "Registrieren";
+  }
+};
+
+function translateAuthError(msg){
+  if(/Invalid login/i.test(msg))           return "E-Mail oder Passwort stimmt nicht.";
+  if(/already registered/i.test(msg))      return "Diese E-Mail ist schon registriert. Melde dich an.";
+  if(/at least 8|password.*short|weak/i.test(msg)) return "Passwort zu kurz – mindestens 8 Zeichen.";
+  if(/signups not allowed/i.test(msg))     return "Registrierung ist deaktiviert. Frag den Admin nach einem Account.";
+  return msg;
+}
+
+/* ---- Logout ---- */
+document.getElementById("logoutBtn").onclick = async ()=>{ await sb.auth.signOut(); };
+
+/* ---- Auth-State steuert die ganze UI ---- */
+async function onSession(session){
+  if(!session){ me = null; myRoles = []; setMode(mode); show("screen-auth"); return; }
+  me = session.user;
+
+  // Pending Invite aus QR-Link automatisch einlösen
+  if(pendingCode){
+    const code = pendingCode; pendingCode = null;
+    await doRedeem(code, /*silentOnFail*/true);
+  }
+
+  await loadRoles();
+  renderApp();
+}
+
+async function loadRoles(){
+  const { data, error } = await sb.from("user_roles").select("role").eq("user_id", me.id);
+  myRoles = error ? [] : data.map(r => r.role);
+}
+
+/* ---- Einladungscode einlösen (RPC) ---- */
+async function doRedeem(code, silentOnFail){
+  try{
+    const { data, error } = await sb.rpc("redeem_invite", { _code: code });
+    if(error) throw error;
+    toast("Freigeschaltet als " + (ROLE_INFO[data]?.label || data) + ".");
+    await loadRoles(); renderApp();
+    return true;
+  }catch(e){
+    if(!silentOnFail) toast("Code ungültig, abgelaufen oder schon benutzt.");
+    return false;
+  }
+}
+document.getElementById("redeemBtn").onclick = ()=>{
+  const code = document.getElementById("redeemInput").value.trim().toUpperCase();
+  if(code) doRedeem(code, false);
+};
+
+/* ---- Dashboard rendern ---- */
+function renderApp(){
+  show("screen-app");
+  document.getElementById("userEmail").textContent = me.email;
+
+  // Rollen-Pills
+  const pills = document.getElementById("rolePills");
+  pills.innerHTML = "";
+  if(myRoles.length === 0){
+    pills.innerHTML = '<span class="pill">noch nicht freigeschaltet</span>';
+  } else {
+    myRoles.forEach(r=>{
+      const info = ROLE_INFO[r] || {label:r, ico:"•"};
+      const el = document.createElement("span");
+      el.className = "pill" + (r==="superadmin" ? " super":"");
+      el.textContent = info.ico + " " + info.label;
+      pills.appendChild(el);
+    });
+  }
+
+  const has = r => myRoles.includes(r);
+  const isAdmin = has("admin") || has("superadmin");
+  const activated = myRoles.length > 0;
+
+  document.getElementById("activateBox").classList.toggle("hidden", activated);
+  document.getElementById("dash").classList.toggle("hidden", !activated);
+  if(!activated) return;
+
+  /* Kacheln je nach Rolle (Platzhalter – Logik ist live, Inhalt kommt) */
+  const tiles = [];
+  if(isAdmin) tiles.push(["🏆","Turniere","Format wählen, Teams eintragen, Spielplan generieren."]);
+  tiles.push(["📋","Spielplan","Wann an welchem Tisch welches Spiel läuft."]);
+  if(has("punkterichter")||isAdmin) tiles.push(["🎯","Ergebnisse melden","Becher eintragen – Sieger & Becherdifferenz automatisch."]);
+  if(has("kassenwart")||isAdmin) tiles.push(["💶","Kasse","Wer hat Eintritt gezahlt, wer ist offen, Summe."]);
+  tiles.push(["📌","Pinnwand","Ansagen, Trash-Talk, MVP-Voting."]);
+
+  const grid = document.getElementById("tiles");
+  grid.innerHTML = "";
+  tiles.forEach(([ico,title,desc])=>{
+    const t = document.createElement("div");
+    t.className = "tile";
+    t.innerHTML = `<h3><span class="ico">${ico}</span> ${title} <span class="soon">bald</span></h3><p>${desc}</p>`;
+    grid.appendChild(t);
+  });
+
+  // Admin-Bereich: Einladungen
+  document.getElementById("adminInvite").classList.toggle("hidden", !isAdmin);
+  if(isAdmin) fillInviteRoles();
+}
+
+/* ---- Invite-Rollen ins Dropdown (admin: keine admin/superadmin) ---- */
+function fillInviteRoles(){
+  const sel = document.getElementById("inviteRole");
+  const isSuper = myRoles.includes("superadmin");
+  const allowed = isSuper
+    ? ["admin","punkterichter","kassenwart","viewer"]
+    : ["punkterichter","kassenwart","viewer"];
+  sel.innerHTML = allowed.map(r=>`<option value="${r}">${ROLE_INFO[r].label}</option>`).join("");
+}
+
+/* ---- Einladung erzeugen ---- */
+function genCode(prefix){
+  const abc = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // ohne 0/O/1/I
+  let s = ""; for(let i=0;i<5;i++) s += abc[Math.floor(Math.random()*abc.length)];
+  return prefix.slice(0,5).toUpperCase() + "-" + s;
+}
+document.getElementById("createInviteBtn").onclick = async ()=>{
+  const role = document.getElementById("inviteRole").value;
+  const code = genCode(role);
+  const btn = document.getElementById("createInviteBtn");
+  btn.disabled = true;
+  try{
+    const { error } = await sb.from("invites").insert({ code, role, created_by: me.id });
+    if(error) throw error;
+    showInviteResult(code);
+    toast("Einladung erstellt.");
+  }catch(e){
+    toast("Konnte Einladung nicht erstellen: " + (e.message||e));
+  }finally{
+    btn.disabled = false;
+  }
+};
+
+function showInviteResult(code){
+  const wrap = document.getElementById("inviteResult");
+  const link = location.origin + location.pathname + "?code=" + code;
+  document.getElementById("inviteCode").textContent = code;
+  document.getElementById("inviteLink").innerHTML =
+    'Link: <a href="'+link+'">'+link+'</a>';
+  wrap.classList.remove("hidden");
+  const qr = document.getElementById("qr");
+  qr.innerHTML = "";
+  try{
+    if(typeof QRCode !== "undefined"){
+      new QRCode(qr, { text: link, width: 168, height: 168,
+        colorDark:"#14101c", colorLight:"#ffffff" });
+    } else { qr.classList.add("hidden"); }
+  }catch(_){ qr.classList.add("hidden"); }
+}
+
+/* ==================== INIT ==================== */
+(async function init(){
+  if(!configOk){ show("screen-setup"); return; }
+  readInviteFromUrl();
+  setMode("login");
+  sb.auth.onAuthStateChange((_event, session)=> onSession(session));
+  const { data:{ session } } = await sb.auth.getSession();
+  onSession(session);
+})();
+</script>
+</body>
+</html>
