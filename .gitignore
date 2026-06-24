@@ -1,0 +1,39 @@
+# OS / Editor
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# VS Code
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+
+# JetBrains / IntelliJ
+.idea/
+*.iml
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Node (falls später mal was dazukommt)
+node_modules/
+.npm
+.yarn
+
+# Env / lokale Overrides
+.env
+.env.local
+.env.*.local
+
+# Backups
+*.bak
+*.swp
+*~
+
+# Build-Artefakte (für später, wenn der Single-File-Stil bricht)
+dist/
+build/
+.cache/
